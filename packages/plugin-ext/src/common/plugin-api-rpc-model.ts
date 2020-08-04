@@ -540,3 +540,9 @@ export interface LinePreview {
     text: string;
     character: number;
 }
+
+export interface TimelineChangeEvent {
+    id: string;
+    uri: string | undefined;
+    reset: boolean
+}
