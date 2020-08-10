@@ -541,8 +541,3 @@ export interface LinePreview {
     character: number;
 }
 
-export interface TimelineChangeEvent {
-    id: string;
-    uri: string | undefined;
-    reset: boolean
-}
