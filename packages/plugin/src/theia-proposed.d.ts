@@ -21,41 +21,6 @@
 declare module '@theia/plugin' {
     // #region auth provider
 
-    export class AuthenticationSession {
-        /**
-         * The identifier of the authentication session.
-         */
-        readonly id: string;
-
-        /**
-         * The access token.
-         */
-        readonly accessToken: string;
-
-        /**
-         * The account associated with the session.
-         */
-        readonly account: {
-            /**
-             * The human-readable name of the account.
-             */
-            readonly displayName: string;
-
-            /**
-             * The unique identifier of the account.
-             */
-            readonly id: string;
-        };
-
-        /**
-         * The permissions granted by the session's access token. Available scopes
-         * are defined by the authentication provider.
-         */
-        readonly scopes: string[];
-
-        constructor(id: string, accessToken: string, account: { displayName: string, id: string }, scopes: string[]);
-    }
-
     /**
      * An [event](#Event) which fires when an [AuthenticationProvider](#AuthenticationProvider) is added or removed.
      */
@@ -63,48 +28,32 @@ declare module '@theia/plugin' {
         /**
          * The ids of the [authenticationProvider](#AuthenticationProvider)s that have been added.
          */
-        readonly added: string[];
+        readonly added: ReadonlyArray<AuthenticationProviderInformation>;
 
         /**
          * The ids of the [authenticationProvider](#AuthenticationProvider)s that have been removed.
          */
-        readonly removed: string[];
-    }
-
-    /**
-     * Options to be used when getting a session from an [AuthenticationProvider](#AuthenticationProvider).
-     */
-    export interface AuthenticationGetSessionOptions {
-        /**
-         *  Whether login should be performed if there is no matching session. Defaults to false.
-         */
-        createIfNone?: boolean;
-
-        /**
-         * Whether the existing user session preference should be cleared. Set to allow the user to switch accounts.
-         * Defaults to false.
-         */
-        clearSessionPreference?: boolean;
+        readonly removed: ReadonlyArray<AuthenticationProviderInformation>;
     }
 
     /**
      * An [event](#Event) which fires when an [AuthenticationSession](#AuthenticationSession) is added, removed, or changed.
      */
-    export interface AuthenticationSessionsChangeEvent {
+    export interface AuthenticationProviderAuthenticationSessionsChangeEvent {
         /**
          * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been added.
          */
-        readonly added: string[];
+        readonly added: ReadonlyArray<string>;
 
         /**
          * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been removed.
          */
-        readonly removed: string[];
+        readonly removed: ReadonlyArray<string>;
 
         /**
          * The ids of the [AuthenticationSession](#AuthenticationSession)s that have been changed.
          */
-        readonly changed: string[];
+        readonly changed: ReadonlyArray<string>;
     }
 
     /**
@@ -123,7 +72,7 @@ declare module '@theia/plugin' {
         /**
          * The human-readable name of the provider.
          */
-        readonly displayName: string;
+        readonly label: string;
 
         /**
          * Whether it is possible to be signed into multiple accounts at once with this provider
@@ -134,7 +83,7 @@ declare module '@theia/plugin' {
          * An [event](#Event) which fires when the array of sessions has changed, or data
          * within a session has changed.
          */
-        readonly onDidChangeSessions: Event<AuthenticationSessionsChangeEvent>;
+        readonly onDidChangeSessions: Event<AuthenticationProviderAuthenticationSessionsChangeEvent>;
 
         /**
          * Returns an array of current sessions.
@@ -171,6 +120,7 @@ declare module '@theia/plugin' {
         export const onDidChangeAuthenticationProviders: Event<AuthenticationProvidersChangeEvent>;
 
         /**
+         * @deprecated
          * The ids of the currently registered authentication providers.
          * @returns An array of the ids of authentication providers that are currently registered.
          */
@@ -180,42 +130,12 @@ declare module '@theia/plugin' {
          * @deprecated
          * An array of the ids of authentication providers that are currently registered.
          */
-        export const providerIds: string[];
+        export const providerIds: ReadonlyArray<string>;
 
         /**
-         * Returns whether a provider has any sessions matching the requested scopes. This request
-         * is transparent to the user, no UI is shown. Rejects if a provider with providerId is not
-         * registered.
-         * @param providerId The id of the provider
-         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication
-         * provider
-         * @returns A thenable that resolve to whether the provider has sessions with the requested scopes.
+         * An array of the information of authentication providers that are currently registered.
          */
-        export function hasSessions(providerId: string, scopes: string[]): Thenable<boolean>;
-
-        /**
-         * Get an authentication session matching the desired scopes. Rejects if a provider with providerId is not
-         * registered, or if the user does not consent to sharing authentication information with
-         * the extension. If there are multiple sessions with the same scopes, the user will be shown a
-         * quickpick to select which account they would like to use.
-         * @param providerId The id of the provider to use
-         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication provider
-         * @param options The [getSessionOptions](#GetSessionOptions) to use
-         * @returns A thenable that resolves to an authentication session
-         */
-        export function getSession(providerId: string, scopes: string[], options: AuthenticationGetSessionOptions & { createIfNone: true }): Thenable<AuthenticationSession>;
-
-        /**
-         * Get an authentication session matching the desired scopes. Rejects if a provider with providerId is not
-         * registered, or if the user does not consent to sharing authentication information with
-         * the extension. If there are multiple sessions with the same scopes, the user will be shown a
-         * quickpick to select which account they would like to use.
-         * @param providerId The id of the provider to use
-         * @param scopes A list of scopes representing the permissions requested. These are dependent on the authentication provider
-         * @param options The [getSessionOptions](#GetSessionOptions) to use
-         * @returns A thenable that resolves to an authentication session if available, or undefined if there are no sessions
-         */
-        export function getSession(providerId: string, scopes: string[], options: AuthenticationGetSessionOptions): Thenable<AuthenticationSession | undefined>;
+        export const providers: ReadonlyArray<AuthenticationProviderInformation>;
 
         /**
          * @deprecated
@@ -225,13 +145,6 @@ declare module '@theia/plugin' {
          * provider
          */
         export function logout(providerId: string, sessionId: string): Thenable<void>;
-
-        /**
-         * An [event](#Event) which fires when the array of sessions has changed, or data
-         * within a session has changed for a provider. Fires with the ids of the providers
-         * that have had session data change.
-         */
-        export const onDidChangeSessions: Event<{ [providerId: string]: AuthenticationSessionsChangeEvent; }>;
     }
 
     //#endregion
