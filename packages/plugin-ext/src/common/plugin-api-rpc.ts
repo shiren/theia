@@ -73,7 +73,7 @@ import {
 } from './plugin-api-rpc-model';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { KeysToAnyValues, KeysToKeysToAnyValue } from './types';
-import { AuthenticationSession, CancellationToken, Progress, ProgressOptions } from '@theia/plugin';
+import { CancellationToken, Progress, ProgressOptions } from '@theia/plugin';
 import { DebuggerDescription } from '@theia/debug/lib/common/debug-service';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { SymbolInformation } from 'vscode-languageserver-types';
@@ -82,12 +82,15 @@ import { MaybePromise } from '@theia/core/lib/common/types';
 import { QuickTitleButton } from '@theia/core/lib/common/quick-open-model';
 import { ResourceLabelFormatter } from '@theia/core/lib/common/label-protocol';
 import {
+    AuthenticationProviderInformation,
+    AuthenticationSessionsChangeEvent
+} from '@theia/core/lib/browser/authentication-service';
+import {
     InternalTimelineOptions,
     Timeline,
     TimelineChangeEvent,
     TimelineProviderDescriptor
 } from '@theia/timeline/lib/common/timeline-model';
-import { AuthenticationSessionsChangeEvent } from '@theia/core/lib/browser/authentication-service';
 
 export interface PreferenceData {
     [scope: number]: any;
@@ -1526,24 +1529,25 @@ export interface AuthenticationExt {
     $getSessionAccessToken(id: string, sessionId: string): Promise<string>;
     $login(id: string, scopes: string[]): Promise<theia.AuthenticationSession>;
     $logout(id: string, sessionId: string): Promise<void>;
-    $onDidChangeAuthenticationSessions(providerId: string, event: theia.AuthenticationSessionsChangeEvent): Promise<void>;
-    $onDidChangeAuthenticationProviders(added: string[], removed: string[]): Promise<void>;
+    $onDidChangeAuthenticationSessions(id: string, label: string, event: AuthenticationSessionsChangeEvent): Promise<void>;
+    $onDidChangeAuthenticationProviders(added: AuthenticationProviderInformation[], removed: theia.AuthenticationProviderInformation[]): Promise<void>;
 }
 
 export interface AuthenticationMain {
-    $registerAuthenticationProvider(id: string, displayName: string, supportsMultipleAccounts: boolean): void;
+    $registerAuthenticationProvider(id: string, label: string, supportsMultipleAccounts: boolean): void;
     $unregisterAuthenticationProvider(id: string): void;
     $getProviderIds(): Promise<string[]>;
     $sendDidChangeSessions(providerId: string, event: AuthenticationSessionsChangeEvent): void;
     $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
-                options: { createIfNone?: boolean, clearSessionPreference?: boolean }): Promise<AuthenticationSession | undefined>;
+                options: { createIfNone?: boolean, clearSessionPreference?: boolean }): Promise<theia.AuthenticationSession | undefined>;
     $selectSession(providerId: string, providerName: string, extensionId: string, extensionName: string,
-                   potentialSessions: AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<AuthenticationSession>;
+                   potentialSessions: theia.AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<theia.AuthenticationSession>;
     $getSessionsPrompt(providerId: string, accountName: string, providerName: string, extensionId: string, extensionName: string): Promise<boolean>;
     $loginPrompt(providerName: string, extensionName: string): Promise<boolean>;
-    $setTrustedExtension(providerId: string, accountName: string, extensionId: string, extensionName: string): Promise<void>;
+    $setTrustedExtensionAndAccountPreference(providerId: string, accountName: string, extensionId: string, extensionName: string, sessionId: string): Promise<void>;
 
     $getSessions(providerId: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
+    $login(providerId: string, scopes: string[]): Promise<theia.AuthenticationSession>;
     $logout(providerId: string, sessionId: string): Promise<void>;
 }
 

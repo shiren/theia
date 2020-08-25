@@ -28,10 +28,10 @@ import { StorageService } from '@theia/core/lib/browser';
 import {
     AuthenticationProvider,
     AuthenticationService,
+    AuthenticationSession,
     AuthenticationSessionsChangeEvent,
     readAllowedExtensions
 } from '@theia/core/lib/browser/authentication-service';
-import { AuthenticationSession } from '../../plugin/types-impl';
 import { QuickPickItem, QuickPickService } from '@theia/core/lib/common/quick-pick-service';
 
 export class AuthenticationMainImpl implements AuthenticationMain {
@@ -48,10 +48,10 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         this.quickPickService = container.get(QuickPickService);
 
         this.authenticationService.onDidChangeSessions(e => {
-            this.proxy.$onDidChangeAuthenticationSessions(e.providerId, e.event);
+            this.proxy.$onDidChangeAuthenticationSessions(e.providerId, e.label, e.event);
         });
-        this.authenticationService.onDidRegisterAuthenticationProvider(providerId => {
-            this.proxy.$onDidChangeAuthenticationProviders([providerId], []);
+        this.authenticationService.onDidRegisterAuthenticationProvider(info => {
+            this.proxy.$onDidChangeAuthenticationProviders([info], []);
         });
         this.authenticationService.onDidUnregisterAuthenticationProvider(providerId => {
             this.proxy.$onDidChangeAuthenticationProviders([], [providerId]);
@@ -61,8 +61,8 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         return Promise.resolve(this.authenticationService.getProviderIds());
     }
 
-    async $registerAuthenticationProvider(id: string, displayName: string, supportsMultipleAccounts: boolean): Promise<void> {
-        const provider = new AuthenticationProviderImp(this.proxy, id, displayName, supportsMultipleAccounts, this.storageService, this.messageService);
+    async $registerAuthenticationProvider(id: string, label: string, supportsMultipleAccounts: boolean): Promise<void> {
+        const provider = new AuthenticationProviderImp(this.proxy, id, label, supportsMultipleAccounts, this.storageService, this.messageService);
         this.authenticationService.registerAuthenticationProvider(id, provider);
     }
 
@@ -78,6 +78,10 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         return this.authenticationService.getSessions(id);
     }
 
+    $login(providerId: string, scopes: string[]): Promise<AuthenticationSession> {
+        return this.authenticationService.login(providerId, scopes);
+    }
+
     $logout(providerId: string, sessionId: string): Promise<void> {
         return this.authenticationService.logout(providerId, sessionId);
     }
@@ -85,13 +89,13 @@ export class AuthenticationMainImpl implements AuthenticationMain {
     async $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
                       options: { createIfNone: boolean, clearSessionPreference: boolean }): Promise<AuthenticationSession | undefined> {
         const orderedScopes = scopes.sort().join(' ');
-        const sessions = (await this.$getSessions(providerId)).filter(session => session.scopes.sort().join(' ') === orderedScopes);
-        const displayName = this.authenticationService.getDisplayName(providerId);
+        const sessions = (await this.$getSessions(providerId)).filter(session => session.scopes.slice().sort().join(' ') === orderedScopes);
+        const label = this.authenticationService.getLabel(providerId);
 
-        if (sessions.length > 0) {
+        if (sessions.length) {
             if (!this.authenticationService.supportsMultipleAccounts(providerId)) {
                 const session = sessions[0];
-                const allowed = await this.$getSessionsPrompt(providerId, session.account.displayName, displayName, extensionId, extensionName);
+                const allowed = await this.$getSessionsPrompt(providerId, session.account.label, label, extensionId, extensionName);
                 if (allowed) {
                     return session;
                 } else {
@@ -100,17 +104,17 @@ export class AuthenticationMainImpl implements AuthenticationMain {
             }
 
             // On renderer side, confirm consent, ask user to choose between accounts if multiple sessions are valid
-            const selected = await this.$selectSession(providerId, displayName, extensionId, extensionName, sessions, scopes, options.clearSessionPreference);
+            const selected = await this.$selectSession(providerId, label, extensionId, extensionName, sessions, scopes, !!options.clearSessionPreference);
             return sessions.find(session => session.id === selected.id);
         } else {
             if (options.createIfNone) {
-                const isAllowed = await this.$loginPrompt(displayName, extensionName);
+                const isAllowed = await this.$loginPrompt(label, extensionName);
                 if (!isAllowed) {
                     throw new Error('User did not consent to login.');
                 }
 
                 const session = await this.authenticationService.login(providerId, scopes);
-                await this.$setTrustedExtension(providerId, session.account.displayName, extensionId, extensionName);
+                await this.$setTrustedExtensionAndAccountPreference(providerId, session.account.label, extensionId, extensionName, session.id);
                 return session;
             }
         }
@@ -129,7 +133,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
             if (existingSessionPreference) {
                 const matchingSession = potentialSessions.find(session => session.id === existingSessionPreference);
                 if (matchingSession) {
-                    const allowed = await this.$getSessionsPrompt(providerId, matchingSession.account.displayName, providerName, extensionId, extensionName);
+                    const allowed = await this.$getSessionsPrompt(providerId, matchingSession.account.label, providerName, extensionId, extensionName);
                     if (allowed) {
                         return matchingSession;
                     }
@@ -139,7 +143,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
 
         return new Promise(async (resolve, reject) => {
             const items: QuickPickItem<{ session?: AuthenticationSession }>[] = potentialSessions.map(session => ({
-                    label: session.account.displayName,
+                    label: session.account.label,
                     value: { session }
                 }));
             items.push({
@@ -153,7 +157,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
                 });
             if (selected) {
                 const session = selected.session ?? await this.authenticationService.login(providerId, scopes);
-                const accountName = session.account.displayName;
+                const accountName = session.account.label;
 
                 const allowList = await readAllowedExtensions(this.storageService, providerId, accountName);
                 if (!allowList.find(allowed => allowed.id === extensionId)) {
@@ -195,7 +199,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         return choice === 'Allow';
     }
 
-    async $setTrustedExtension(providerId: string, accountName: string, extensionId: string, extensionName: string): Promise<void> {
+    async $setTrustedExtensionAndAccountPreference(providerId: string, accountName: string, extensionId: string, extensionName: string, sessionId: string): Promise<void> {
         const allowList = await readAllowedExtensions(this.storageService, providerId, accountName);
         if (!allowList.find(allowed => allowed.id === extensionId)) {
             allowList.push({ id: extensionId, name: extensionName });
@@ -239,7 +243,7 @@ export class AuthenticationProviderImp implements AuthenticationProvider {
     constructor(
         private readonly proxy: AuthenticationExt,
         public readonly id: string,
-        public readonly displayName: string,
+        public readonly label: string,
         public readonly supportsMultipleAccounts: boolean,
         private readonly storageService: StorageService,
         private readonly messageService: MessageService
@@ -250,14 +254,14 @@ export class AuthenticationProviderImp implements AuthenticationProvider {
     }
 
     private registerSession(session: AuthenticationSession): void {
-        this.sessions.set(session.id, session.account.displayName);
+        this.sessions.set(session.id, session.account.label);
 
-        const existingSessionsForAccount = this.accounts.get(session.account.displayName);
+        const existingSessionsForAccount = this.accounts.get(session.account.label);
         if (existingSessionsForAccount) {
-            this.accounts.set(session.account.displayName, existingSessionsForAccount.concat(session.id));
+            this.accounts.set(session.account.label, existingSessionsForAccount.concat(session.id));
             return;
         } else {
-            this.accounts.set(session.account.displayName, [session.id]);
+            this.accounts.set(session.account.label, [session.id]);
         }
     }
 

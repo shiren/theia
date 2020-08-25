@@ -28,16 +28,21 @@ export interface AuthenticationSession {
     id: string;
     accessToken: string;
     account: {
-        displayName: string;
+        label: string;
         id: string;
     }
-    scopes: string[];
+    scopes: ReadonlyArray<string>;
 }
 
 export interface AuthenticationSessionsChangeEvent {
-    added: string[];
-    removed: string[];
-    changed: string[];
+    added: ReadonlyArray<string>;
+    removed: ReadonlyArray<string>;
+    changed: ReadonlyArray<string>;
+}
+
+export interface AuthenticationProviderInformation {
+    id: string;
+    label: string;
 }
 
 export interface AuthenticationProvider {
@@ -45,7 +50,7 @@ export interface AuthenticationProvider {
 
     supportsMultipleAccounts: boolean;
 
-    displayName: string;
+    label: string;
 
     hasSessions(): boolean;
 
@@ -68,12 +73,12 @@ export interface AuthenticationService {
     unregisterAuthenticationProvider(id: string): void;
     sessionsUpdate(providerId: string, event: AuthenticationSessionsChangeEvent): void;
 
-    readonly onDidRegisterAuthenticationProvider: Event<string>;
-    readonly onDidUnregisterAuthenticationProvider: Event<string>;
+    readonly onDidRegisterAuthenticationProvider: Event<AuthenticationProviderInformation>;
+    readonly onDidUnregisterAuthenticationProvider: Event<AuthenticationProviderInformation>;
 
-    readonly onDidChangeSessions: Event<{ providerId: string, event: AuthenticationSessionsChangeEvent }>;
+    readonly onDidChangeSessions: Event<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }>;
     getSessions(providerId: string): Promise<ReadonlyArray<AuthenticationSession>>;
-    getDisplayName(providerId: string): string;
+    getLabel(providerId: string): string;
     supportsMultipleAccounts(providerId: string): boolean;
     login(providerId: string, scopes: string[]): Promise<AuthenticationSession>;
     logout(providerId: string, sessionId: string): Promise<void>;
@@ -85,15 +90,15 @@ export interface AuthenticationService {
 export class AuthenticationServiceImpl implements AuthenticationService {
     private authenticationProviders: Map<string, AuthenticationProvider> = new Map<string, AuthenticationProvider>();
 
-    private onDidRegisterAuthenticationProviderEmitter: Emitter<string> = new Emitter<string>();
-    readonly onDidRegisterAuthenticationProvider: Event<string> = this.onDidRegisterAuthenticationProviderEmitter.event;
+    private onDidRegisterAuthenticationProviderEmitter: Emitter<AuthenticationProviderInformation> = new Emitter<AuthenticationProviderInformation>();
+    readonly onDidRegisterAuthenticationProvider: Event<AuthenticationProviderInformation> = this.onDidRegisterAuthenticationProviderEmitter.event;
 
-    private onDidUnregisterAuthenticationProviderEmitter: Emitter<string> = new Emitter<string>();
-    readonly onDidUnregisterAuthenticationProvider: Event<string> = this.onDidUnregisterAuthenticationProviderEmitter.event;
+    private onDidUnregisterAuthenticationProviderEmitter: Emitter<AuthenticationProviderInformation> = new Emitter<AuthenticationProviderInformation>();
+    readonly onDidUnregisterAuthenticationProvider: Event<AuthenticationProviderInformation> = this.onDidUnregisterAuthenticationProviderEmitter.event;
 
-    private onDidChangeSessionsEmitter: Emitter<{ providerId: string, event: AuthenticationSessionsChangeEvent }> =
-        new Emitter<{ providerId: string, event: AuthenticationSessionsChangeEvent }>();
-    readonly onDidChangeSessions: Event<{ providerId: string, event: AuthenticationSessionsChangeEvent }> = this.onDidChangeSessionsEmitter.event;
+    private onDidChangeSessionsEmitter: Emitter<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }> =
+        new Emitter<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }>();
+    readonly onDidChangeSessions: Event<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }> = this.onDidChangeSessionsEmitter.event;
 
     getProviderIds(): string[] {
         const providerIds: string[] = [];
@@ -109,29 +114,29 @@ export class AuthenticationServiceImpl implements AuthenticationService {
 
     registerAuthenticationProvider(id: string, authenticationProvider: AuthenticationProvider): void {
         this.authenticationProviders.set(id, authenticationProvider);
-        this.onDidRegisterAuthenticationProviderEmitter.fire(id);
+        this.onDidRegisterAuthenticationProviderEmitter.fire({ id, label: authenticationProvider.label });
     }
 
     unregisterAuthenticationProvider(id: string): void {
         const provider = this.authenticationProviders.get(id);
         if (provider) {
             this.authenticationProviders.delete(id);
-            this.onDidUnregisterAuthenticationProviderEmitter.fire(id);
+            this.onDidUnregisterAuthenticationProviderEmitter.fire({ id, label: provider.label });
         }
     }
 
     async sessionsUpdate(id: string, event: AuthenticationSessionsChangeEvent): Promise<void> {
-        this.onDidChangeSessionsEmitter.fire({ providerId: id, event: event });
         const provider = this.authenticationProviders.get(id);
         if (provider) {
             await provider.updateSessionItems(event);
+            this.onDidChangeSessionsEmitter.fire({ providerId: id, label: provider.label, event: event });
         }
     }
 
-    getDisplayName(id: string): string {
+    getLabel(id: string): string {
         const authProvider = this.authenticationProviders.get(id);
         if (authProvider) {
-            return authProvider.displayName;
+            return authProvider.label;
         } else {
             throw new Error(`No authentication provider '${id}' is currently registered.`);
         }
