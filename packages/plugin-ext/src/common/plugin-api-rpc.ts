@@ -78,7 +78,7 @@ import { QuickTitleButton } from '@theia/core/lib/common/quick-open-model';
 import * as files from '@theia/filesystem/lib/common/files';
 import { BinaryBuffer } from '@theia/core/lib/common/buffer';
 import { ResourceLabelFormatter } from '@theia/core/lib/common/label-protocol';
-import {
+import type {
     InternalTimelineOptions,
     Timeline,
     TimelineChangeEvent,

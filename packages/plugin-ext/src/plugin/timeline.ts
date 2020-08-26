@@ -19,7 +19,7 @@ import { Disposable } from './types-impl';
 import { PLUGIN_RPC_CONTEXT } from '../common';
 import { DisposableCollection } from '@theia/core/lib/common/disposable';
 import { CommandRegistryImpl } from './command-registry';
-import {
+import type {
     InternalTimelineOptions,
     Timeline,
     TimelineItem,

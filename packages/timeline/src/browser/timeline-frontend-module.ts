@@ -21,7 +21,6 @@ import { TimelineWidget } from './timeline-widget';
 import { TimelineTreeWidget } from './timeline-tree-widget';
 import {
     createTreeContainer,
-    FrontendApplicationContribution,
     TreeModel,
     TreeModelImpl,
     TreeWidget
@@ -32,10 +31,13 @@ import { TimelineContextKeyService } from './timeline-context-key-service';
 import { TimelineContribution } from './timeline-contribution';
 
 import '../../src/browser/style/index.css';
+import { CommandContribution } from '@theia/core/lib/common';
+import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 
 export default new ContainerModule(bind => {
     bind(TimelineContribution).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(TimelineContribution);
+    bind(CommandContribution).toService(TimelineContribution);
+    bind(TabBarToolbarContribution).toService(TimelineContribution);
 
     bind(TimelineContextKeyService).toSelf().inSingletonScope();
     bind(TimelineService).toSelf().inSingletonScope();
