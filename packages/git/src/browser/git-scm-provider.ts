@@ -576,10 +576,12 @@ export class GitScmFileChange implements ScmFileChange {
         if (!this.range) {
             return uri;
         }
-        const fromRevision = this.range.fromRevision || 'HEAD';
-        const toRevision = this.range.toRevision || 'HEAD';
-        const fromURI = fromFileURI.withScheme(GIT_RESOURCE_SCHEME).withQuery(fromRevision.toString());
-        const toURI = uri.withScheme(GIT_RESOURCE_SCHEME).withQuery(toRevision.toString());
+        const fromURI = this.range.fromRevision
+            ? fromFileURI.withScheme(GIT_RESOURCE_SCHEME).withQuery(this.range.fromRevision.toString())
+            : fromFileURI;
+        const toURI = this.range.toRevision
+            ? uri.withScheme(GIT_RESOURCE_SCHEME).withQuery(this.range.toRevision.toString())
+            : uri;
         let uriToOpen = uri;
         if (this.fileChange.status === GitFileStatus.Deleted) {
             uriToOpen = fromURI;
