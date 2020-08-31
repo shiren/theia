@@ -27,6 +27,7 @@ import { TimelineWidget } from './timeline-widget';
 import { TimelineService } from './timeline-service';
 import { Command, CommandContribution, CommandRegistry } from '@theia/core/lib/common';
 import { TabBarToolbarContribution, TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { toArray } from '@phosphor/algorithm';
 
 @injectable()
 export class TimelineContribution implements CommandContribution, TabBarToolbarContribution {
@@ -86,7 +87,11 @@ export class TimelineContribution implements CommandContribution, TabBarToolbarC
         });
         commands.registerCommand(TimelineContribution.LOAD_MORE_COMMAND, {
             execute: async () => {
-                const widget = this.shell.getWidgetById(navigableId);
+                let navigable;
+                if (!navigableId) {
+                    navigable = toArray(this.shell.mainPanel.widgets()).find(w => Navigatable.is(w) && w.isVisible && !w.isHidden);
+                }
+                const widget = this.shell.getWidgetById(navigableId) || navigable;
                 if (Navigatable.is(widget)) {
                     const uri = widget.getResourceUri();
                     const timeline = await this.widgetManager.getWidget<TimelineWidget>(TimelineWidget.ID);

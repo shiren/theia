@@ -30,7 +30,7 @@ export interface TimelineNode extends SelectableTreeNode {
 @injectable()
 export class TimelineTreeModel extends TreeModelImpl {
 
-    updateTree(items: TimelineItem[], loadMore: boolean): void {
+    updateTree(items: TimelineItem[], hasMoreItems: boolean): void {
         const root = {
             id: 'timeline-tree-root',
             parent: undefined,
@@ -47,7 +47,7 @@ export class TimelineTreeModel extends TreeModelImpl {
                 visible: true
             } as TimelineNode)
         );
-        if (loadMore) {
+        if (hasMoreItems) {
             const loadMoreNode: TimelineItem = { label: 'Load-more', timestamp: 0, handle: '', uri: '', source: '' };
             loadMoreNode.command = TimelineContribution.LOAD_MORE_COMMAND;
             children.push({

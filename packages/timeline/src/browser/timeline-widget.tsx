@@ -21,7 +21,7 @@ import { inject, injectable, postConstruct } from 'inversify';
 import {
     ApplicationShell,
     BaseWidget,
-    MessageLoop,
+    MessageLoop, Navigatable,
     NavigatableWidget,
     Panel,
     PanelLayout
@@ -33,7 +33,6 @@ import { TimelineEmptyWidget } from './timeline-empty-widget';
 import { toArray } from '@phosphor/algorithm';
 import URI from '@theia/core/lib/common/uri';
 import { URI as CodeURI } from 'vscode-uri';
-import { TimelineProvidersChangeEvent } from '../common/timeline-model';
 import { TimelineAggregate } from './timeline-service';
 
 @injectable()
@@ -76,25 +75,12 @@ export class TimelineWidget extends BaseWidget {
                 }
             })
         );
-        this.toDispose.push(this.applicationShell.onDidChangeCurrentWidget(async event => this.refresh()));
-        this.toDispose.push(this.timelineService.onDidChangeProviders(e => this.onProvidersChanged(e)));
-    }
-
-    private onProvidersChanged(event: TimelineProvidersChangeEvent): void {
-        const currentUri = this.getCurrentWidgetUri();
-        if (event.removed) {
-            for (const source of event.removed) {
-                this.timelinesBySource.delete(source);
+        this.toDispose.push(this.applicationShell.onDidChangeCurrentWidget(async e => {
+            if ((e.newValue && Navigatable.is(e.newValue)) || !this.suitableWidgetsOpened()) {
+                this.refresh();
             }
-
-            if (currentUri) {
-                this.loadTimeline(currentUri, true);
-            }
-        } else if (event.added) {
-            if (currentUri) {
-                event.added.forEach(source => this.loadTimelineForSource(source, CodeURI.parse(currentUri.toString()), true));
-            }
-        }
+        }));
+        this.toDispose.push(this.timelineService.onDidChangeProviders(() => this.refresh()));
     }
 
     protected async loadTimelineForSource(source: string, uri: CodeURI, reset: boolean): Promise<void> {

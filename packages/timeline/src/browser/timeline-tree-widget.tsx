@@ -56,6 +56,19 @@ export class TimelineTreeWidget extends TreeWidget {
             contextMenuRenderer={this.contextMenuRenderer}/>;
         return React.createElement('div', attributes, content);
     }
+
+    protected handleEnter(event: KeyboardEvent): void {
+        const node = this.model.selectedNodes[0] as TimelineNode;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const command: any = node.timelineItem.command;
+        if (command) {
+            this.commandRegistry.executeCommand(command.id, ...command.arguments ? command.arguments : []);
+        }
+    }
+
+    protected async handleLeft(event: KeyboardEvent): Promise<void> {
+        this.model.selectPrevNode();
+    }
 }
 
 export namespace TimelineItemNode {
