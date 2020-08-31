@@ -29,7 +29,7 @@ import {
 import { RPCProtocol } from '../common/rpc-protocol';
 import { Emitter, Event } from '@theia/core/lib/common/event';
 import * as theia from '@theia/plugin';
-import { AuthenticationSessionsChangeEvent } from '@theia/core/lib/browser/authentication-service';
+import { AuthenticationSessionsChangeEvent } from '../common/plugin-api-rpc-model';
 
 export class AuthenticationExtImpl implements AuthenticationExt {
     private proxy: AuthenticationMain;
@@ -70,7 +70,7 @@ export class AuthenticationExtImpl implements AuthenticationExt {
         const extensionId = requestingExtension.model.id.toLowerCase();
 
         if (!provider) {
-            return this.proxy.$getSession(providerId, scopes, extensionId, extensionName, options);
+            throw new Error(`An authentication provider with id '${providerId}' was not found.`);
         }
 
         const orderedScopes = scopes.sort().join(' ');
@@ -134,7 +134,7 @@ export class AuthenticationExtImpl implements AuthenticationExt {
         }
 
         const listener = provider.onDidChangeSessions(e => {
-            this.proxy.$sendDidChangeSessions(provider.id, e);
+            this.proxy.$updateSessions(provider.id, e);
         });
 
         this.proxy.$registerAuthenticationProvider(provider.id, provider.label, provider.supportsMultipleAccounts);
@@ -178,21 +178,6 @@ export class AuthenticationExtImpl implements AuthenticationExt {
         const authProvider = this.authenticationProviders.get(providerId);
         if (authProvider) {
             return Promise.resolve(authProvider.getSessions());
-        }
-
-        throw new Error(`Unable to find authentication provider with handle: ${providerId}`);
-    }
-
-    async $getSessionAccessToken(providerId: string, sessionId: string): Promise<string> {
-        const authProvider = this.authenticationProviders.get(providerId);
-        if (authProvider) {
-            const sessions = await authProvider.getSessions();
-            const session = sessions.find(s => s.id === sessionId);
-            if (session) {
-                return session.accessToken;
-            }
-
-            throw new Error(`Unable to find session with id: ${sessionId}`);
         }
 
         throw new Error(`Unable to find authentication provider with handle: ${providerId}`);

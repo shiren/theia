@@ -28,11 +28,13 @@ import { StorageService } from '@theia/core/lib/browser';
 import {
     AuthenticationProvider,
     AuthenticationService,
-    AuthenticationSession,
-    AuthenticationSessionsChangeEvent,
     readAllowedExtensions
 } from '@theia/core/lib/browser/authentication-service';
 import { QuickPickItem, QuickPickService } from '@theia/core/lib/common/quick-pick-service';
+import {
+    AuthenticationSession,
+    AuthenticationSessionsChangeEvent
+} from '../../common/plugin-api-rpc-model';
 
 export class AuthenticationMainImpl implements AuthenticationMain {
     private readonly proxy: AuthenticationExt;
@@ -62,7 +64,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
     }
 
     async $registerAuthenticationProvider(id: string, label: string, supportsMultipleAccounts: boolean): Promise<void> {
-        const provider = new AuthenticationProviderImp(this.proxy, id, label, supportsMultipleAccounts, this.storageService, this.messageService);
+        const provider = new AuthenticationProviderImpl(this.proxy, id, label, supportsMultipleAccounts, this.storageService, this.messageService);
         this.authenticationService.registerAuthenticationProvider(id, provider);
     }
 
@@ -70,16 +72,8 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         this.authenticationService.unregisterAuthenticationProvider(id);
     }
 
-    async $sendDidChangeSessions(id: string, event: AuthenticationSessionsChangeEvent): Promise<void> {
-        this.authenticationService.sessionsUpdate(id, event);
-    }
-
-    $getSessions(id: string): Promise<ReadonlyArray<AuthenticationSession>> {
-        return this.authenticationService.getSessions(id);
-    }
-
-    $login(providerId: string, scopes: string[]): Promise<AuthenticationSession> {
-        return this.authenticationService.login(providerId, scopes);
+    async $updateSessions(id: string, event: AuthenticationSessionsChangeEvent): Promise<void> {
+        this.authenticationService.updateSessions(id, event);
     }
 
     $logout(providerId: string, sessionId: string): Promise<void> {
@@ -90,43 +84,6 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         return this.authenticationService.requestNewSession(providerId, scopes, extensionId, extensionName);
     }
 
-    async $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
-                      options: { createIfNone: boolean, clearSessionPreference: boolean }): Promise<AuthenticationSession | undefined> {
-        const orderedScopes = scopes.sort().join(' ');
-        const sessions = (await this.$getSessions(providerId)).filter(session => session.scopes.slice().sort().join(' ') === orderedScopes);
-        const label = this.authenticationService.getLabel(providerId);
-
-        if (sessions.length) {
-            if (!this.authenticationService.supportsMultipleAccounts(providerId)) {
-                const session = sessions[0];
-                const allowed = await this.$getSessionsPrompt(providerId, session.account.label, label, extensionId, extensionName);
-                if (allowed) {
-                    return session;
-                } else {
-                    throw new Error('User did not consent to login.');
-                }
-            }
-
-            // On renderer side, confirm consent, ask user to choose between accounts if multiple sessions are valid
-            const selected = await this.$selectSession(providerId, label, extensionId, extensionName, sessions, scopes, !!options.clearSessionPreference);
-            return sessions.find(session => session.id === selected.id);
-        } else {
-            if (options.createIfNone) {
-                const isAllowed = await this.$loginPrompt(label, extensionName);
-                if (!isAllowed) {
-                    throw new Error('User did not consent to login.');
-                }
-
-                const session = await this.authenticationService.login(providerId, scopes);
-                await this.$setTrustedExtensionAndAccountPreference(providerId, session.account.label, extensionId, extensionName, session.id);
-                return session;
-            } else {
-                await this.$requestNewSession(providerId, scopes, extensionId, extensionName);
-                return undefined;
-            }
-        }
-    }
-
     async $selectSession(providerId: string, providerName: string, extensionId: string, extensionName: string,
                          potentialSessions: AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<AuthenticationSession> {
         if (!potentialSessions.length) {
@@ -134,9 +91,9 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         }
 
         if (clearSessionPreference) {
-            await this.storageService.setData(`${extensionName}-${providerId}`, undefined);
+            await this.storageService.setData(`authentication-session-${extensionName}-${providerId}`, undefined);
         } else {
-            const existingSessionPreference = await this.storageService.getData(`${extensionName}-${providerId}`);
+            const existingSessionPreference = await this.storageService.getData(`authentication-session-${extensionName}-${providerId}`);
             if (existingSessionPreference) {
                 const matchingSession = potentialSessions.find(session => session.id === existingSessionPreference);
                 if (matchingSession) {
@@ -169,10 +126,10 @@ export class AuthenticationMainImpl implements AuthenticationMain {
                 const allowList = await readAllowedExtensions(this.storageService, providerId, accountName);
                 if (!allowList.find(allowed => allowed.id === extensionId)) {
                     allowList.push({ id: extensionId, name: extensionName });
-                    this.storageService.setData(`${providerId}-${accountName}`, JSON.stringify(allowList));
+                    this.storageService.setData(`authentication-trusted-extensions-${providerId}-${accountName}`, JSON.stringify(allowList));
                 }
 
-                this.storageService.setData(`${extensionName}-${providerId}`, session.id);
+                this.storageService.setData(`authentication-session-${extensionName}-${providerId}`, session.id);
 
                 resolve(session);
 
@@ -195,7 +152,7 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         if (allow) {
             await addAccountUsage(this.storageService, providerId, accountName, extensionId, extensionName);
             allowList.push({ id: extensionId, name: extensionName });
-            this.storageService.setData(`${providerId}-${accountName}`, JSON.stringify(allowList));
+            this.storageService.setData(`authentication-trusted-extensions-${providerId}-${accountName}`, JSON.stringify(allowList));
         }
 
         return allow;
@@ -210,13 +167,13 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         const allowList = await readAllowedExtensions(this.storageService, providerId, accountName);
         if (!allowList.find(allowed => allowed.id === extensionId)) {
             allowList.push({ id: extensionId, name: extensionName });
-            this.storageService.setData(`${providerId}-${accountName}`, JSON.stringify(allowList));
+            this.storageService.setData(`authentication-trusted-extensions-${providerId}-${accountName}`, JSON.stringify(allowList));
         }
     }
 }
 
 async function addAccountUsage(storageService: StorageService, providerId: string, accountName: string, extensionId: string, extensionName: string): Promise<void> {
-    const accountKey = `${providerId}-${accountName}-usages`;
+    const accountKey = `authentication-${providerId}-${accountName}-usages`;
     const usages = await readAccountUsages(storageService, providerId, accountName);
 
     const existingUsageIndex = usages.findIndex(usage => usage.extensionId === extensionId);
@@ -243,7 +200,7 @@ interface AccountUsage {
     lastUsed: number;
 }
 
-export class AuthenticationProviderImp implements AuthenticationProvider {
+export class AuthenticationProviderImpl implements AuthenticationProvider {
     private accounts = new Map<string, string[]>(); // Map account name to session ids
     private sessions = new Map<string, string>(); // Map account id to name
 
@@ -322,7 +279,7 @@ export class AuthenticationProviderImp implements AuthenticationProvider {
 }
 
 async function readAccountUsages(storageService: StorageService, providerId: string, accountName: string): Promise<AccountUsage[]> {
-    const accountKey = `${providerId}-${accountName}-usages`;
+    const accountKey = `authentication-${providerId}-${accountName}-usages`;
     const storedUsages: string | undefined = await storageService.getData(accountKey);
     let usages: AccountUsage[] = [];
     if (storedUsages) {
@@ -337,6 +294,6 @@ async function readAccountUsages(storageService: StorageService, providerId: str
 }
 
 function removeAccountUsage(storageService: StorageService, providerId: string, accountName: string): void {
-    const accountKey = `${providerId}-${accountName}-usages`;
+    const accountKey = `authentication-${providerId}-${accountName}-usages`;
     storageService.setData(accountKey, undefined);
 }

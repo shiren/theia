@@ -64,7 +64,10 @@ import {
     SelectionRange,
     CallHierarchyDefinition,
     CallHierarchyReference,
-    SearchInWorkspaceResult
+    SearchInWorkspaceResult,
+    AuthenticationSession,
+    AuthenticationSessionsChangeEvent,
+    AuthenticationProviderInformation
 } from './plugin-api-rpc-model';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { KeysToAnyValues, KeysToKeysToAnyValue } from './types';
@@ -78,10 +81,6 @@ import { QuickTitleButton } from '@theia/core/lib/common/quick-open-model';
 import * as files from '@theia/filesystem/lib/common/files';
 import { BinaryBuffer } from '@theia/core/lib/common/buffer';
 import { ResourceLabelFormatter } from '@theia/core/lib/common/label-protocol';
-import {
-    AuthenticationProviderInformation,
-    AuthenticationSessionsChangeEvent
-} from '@theia/core/lib/browser/authentication-service';
 
 export interface PreferenceData {
     [scope: number]: any;
@@ -1503,30 +1502,25 @@ export interface TasksMain {
 }
 
 export interface AuthenticationExt {
-    $getSessions(id: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
-    $getSessionAccessToken(id: string, sessionId: string): Promise<string>;
-    $login(id: string, scopes: string[]): Promise<theia.AuthenticationSession>;
+    $getSessions(id: string): Promise<ReadonlyArray<AuthenticationSession>>;
+    $login(id: string, scopes: string[]): Promise<AuthenticationSession>;
     $logout(id: string, sessionId: string): Promise<void>;
     $onDidChangeAuthenticationSessions(id: string, label: string, event: AuthenticationSessionsChangeEvent): Promise<void>;
-    $onDidChangeAuthenticationProviders(added: AuthenticationProviderInformation[], removed: theia.AuthenticationProviderInformation[]): Promise<void>;
+    $onDidChangeAuthenticationProviders(added: AuthenticationProviderInformation[], removed: AuthenticationProviderInformation[]): Promise<void>;
 }
 
 export interface AuthenticationMain {
     $registerAuthenticationProvider(id: string, label: string, supportsMultipleAccounts: boolean): void;
     $unregisterAuthenticationProvider(id: string): void;
     $getProviderIds(): Promise<string[]>;
-    $sendDidChangeSessions(providerId: string, event: AuthenticationSessionsChangeEvent): void;
-    $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
-                options: { createIfNone?: boolean, clearSessionPreference?: boolean }): Promise<theia.AuthenticationSession | undefined>;
+    $updateSessions(providerId: string, event: AuthenticationSessionsChangeEvent): void;
     $selectSession(providerId: string, providerName: string, extensionId: string, extensionName: string,
-                   potentialSessions: theia.AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<theia.AuthenticationSession>;
+                   potentialSessions: AuthenticationSession[], scopes: string[], clearSessionPreference: boolean): Promise<AuthenticationSession>;
     $getSessionsPrompt(providerId: string, accountName: string, providerName: string, extensionId: string, extensionName: string): Promise<boolean>;
     $loginPrompt(providerName: string, extensionName: string): Promise<boolean>;
     $setTrustedExtensionAndAccountPreference(providerId: string, accountName: string, extensionId: string, extensionName: string, sessionId: string): Promise<void>;
     $requestNewSession(providerId: string, scopes: string[], extensionId: string, extensionName: string): Promise<void>;
 
-    $getSessions(providerId: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
-    $login(providerId: string, scopes: string[]): Promise<theia.AuthenticationSession>;
     $logout(providerId: string, sessionId: string): Promise<void>;
 }
 

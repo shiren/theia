@@ -28,6 +28,12 @@ import { ACCOUNTS_MENU, ACCOUNTS_SUBMENU, MenuModelRegistry } from '../common/me
 import { CommandRegistry } from '../common/command';
 import { DisposableCollection } from '../common/disposable';
 
+export interface AuthenticationSessionsChangeEvent {
+    added: ReadonlyArray<string>;
+    removed: ReadonlyArray<string>;
+    changed: ReadonlyArray<string>;
+}
+
 export interface AuthenticationSession {
     id: string;
     accessToken: string;
@@ -36,12 +42,6 @@ export interface AuthenticationSession {
         id: string;
     }
     scopes: ReadonlyArray<string>;
-}
-
-export interface AuthenticationSessionsChangeEvent {
-    added: ReadonlyArray<string>;
-    removed: ReadonlyArray<string>;
-    changed: ReadonlyArray<string>;
 }
 
 export interface AuthenticationProviderInformation {
@@ -85,7 +85,7 @@ export interface AuthenticationService {
     registerAuthenticationProvider(id: string, provider: AuthenticationProvider): void;
     unregisterAuthenticationProvider(id: string): void;
     requestNewSession(id: string, scopes: string[], extensionId: string, extensionName: string): void;
-    sessionsUpdate(providerId: string, event: AuthenticationSessionsChangeEvent): void;
+    updateSessions(providerId: string, event: AuthenticationSessionsChangeEvent): void;
 
     readonly onDidRegisterAuthenticationProvider: Event<AuthenticationProviderInformation>;
     readonly onDidUnregisterAuthenticationProvider: Event<AuthenticationProviderInformation>;
@@ -128,6 +128,9 @@ export class AuthenticationServiceImpl implements AuthenticationService {
             if (e.event.added.length > 0) {
                 const sessions = await this.getSessions(e.providerId);
                 sessions.forEach(session => {
+                    if (disposableMap.get(session.id)) {
+                        return;
+                    }
                     const disposables = new DisposableCollection();
                     const commandId = `account-sign-out-${e.providerId}-${session.id}`;
                     const command = this.commands.registerCommand({ id: commandId }, {
@@ -197,10 +200,14 @@ export class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     registerAuthenticationProvider(id: string, authenticationProvider: AuthenticationProvider): void {
+        if (this.authenticationProviders.get(id)) {
+            throw new Error(`An authentication provider with id '${id}' is already registered.`);
+        }
         this.authenticationProviders.set(id, authenticationProvider);
         this.onDidRegisterAuthenticationProviderEmitter.fire({ id, label: authenticationProvider.label });
 
         this.updateAccountsMenuItem();
+        console.log(`An authentication provider with id '${id}' was registered.`);
     }
 
     unregisterAuthenticationProvider(id: string): void {
@@ -209,10 +216,11 @@ export class AuthenticationServiceImpl implements AuthenticationService {
             this.authenticationProviders.delete(id);
             this.onDidUnregisterAuthenticationProviderEmitter.fire({ id, label: provider.label });
             this.updateAccountsMenuItem();
+            console.log(`An authentication provider with id '${id}' was unregistered.`);
         }
     }
 
-    async sessionsUpdate(id: string, event: AuthenticationSessionsChangeEvent): Promise<void> {
+    async updateSessions(id: string, event: AuthenticationSessionsChangeEvent): Promise<void> {
         const provider = this.authenticationProviders.get(id);
         if (provider) {
             await provider.updateSessionItems(event);
@@ -290,11 +298,11 @@ export class AuthenticationServiceImpl implements AuthenticationService {
                     const allowList = await readAllowedExtensions(this.storageService, providerId, session.account.label);
                     if (!allowList.find(allowed => allowed.id === extensionId)) {
                         allowList.push({ id: extensionId, name: extensionName });
-                        this.storageService.setData(`${providerId}-${session.account.label}`, JSON.stringify(allowList));
+                        this.storageService.setData(`authentication-trusted-extensions-${providerId}-${session.account.label}`, JSON.stringify(allowList));
                     }
 
                     // And also set it as the preferred account for the extension
-                    this.storageService.setData(`${extensionName}-${providerId}`, session.id);
+                    this.storageService.setData(`authentication-${extensionName}-${providerId}`, session.id);
                 }
             });
 
@@ -380,12 +388,12 @@ export interface AllowedExtension {
 export async function readAllowedExtensions(storageService: StorageService, providerId: string, accountName: string): Promise<AllowedExtension[]> {
     let trustedExtensions: AllowedExtension[] = [];
     try {
-        const trustedExtensionSrc: string | undefined = await storageService.getData(`${providerId}-${accountName}`);
+        const trustedExtensionSrc: string | undefined = await storageService.getData(`authentication-trusted-extensions-${providerId}-${accountName}`);
         if (trustedExtensionSrc) {
             trustedExtensions = JSON.parse(trustedExtensionSrc);
         }
     } catch (err) {
-        console.log(err);
+        console.error(err);
     }
 
     return trustedExtensions;
