@@ -86,6 +86,10 @@ export class AuthenticationMainImpl implements AuthenticationMain {
         return this.authenticationService.logout(providerId, sessionId);
     }
 
+    async $requestNewSession(providerId: string, scopes: string[], extensionId: string, extensionName: string): Promise<void> {
+        return this.authenticationService.requestNewSession(providerId, scopes, extensionId, extensionName);
+    }
+
     async $getSession(providerId: string, scopes: string[], extensionId: string, extensionName: string,
                       options: { createIfNone: boolean, clearSessionPreference: boolean }): Promise<AuthenticationSession | undefined> {
         const orderedScopes = scopes.sort().join(' ');
@@ -116,6 +120,9 @@ export class AuthenticationMainImpl implements AuthenticationMain {
                 const session = await this.authenticationService.login(providerId, scopes);
                 await this.$setTrustedExtensionAndAccountPreference(providerId, session.account.label, extensionId, extensionName, session.id);
                 return session;
+            } else {
+                await this.$requestNewSession(providerId, scopes, extensionId, extensionName);
+                return undefined;
             }
         }
     }
@@ -269,8 +276,8 @@ export class AuthenticationProviderImp implements AuthenticationProvider {
         const accountUsages = await readAccountUsages(this.storageService, this.id, accountName);
         const sessionsForAccount = this.accounts.get(accountName);
 
-        const result = await this.messageService.info(`The account ${accountName} has been used by: \\n\\n
-        ${accountUsages.map(usage => usage.extensionName).join('\n')}\\n\\n Sign out of these features?`, 'Yes');
+        const result = await this.messageService.info(`The account ${accountName} has been used by: 
+        ${accountUsages.map(usage => usage.extensionName).join(', ')}. Sign out of these features?`, 'Yes');
 
         if (result && result === 'Yes' && sessionsForAccount) {
             sessionsForAccount.forEach(sessionId => this.logout(sessionId));

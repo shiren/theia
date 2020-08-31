@@ -20,9 +20,13 @@
  *--------------------------------------------------------------------------------------------*/
 // code copied and modified from https://github.com/microsoft/vscode/blob/1.47.3/src/vs/workbench/services/authentication/browser/authenticationService.ts
 
-import { injectable } from 'inversify';
+import { injectable, inject, postConstruct } from 'inversify';
 import { Emitter, Event } from '../common/event';
 import { StorageService } from '../browser/storage-service';
+import { Disposable } from '../common/disposable';
+import { ACCOUNTS_MENU, ACCOUNTS_SUBMENU, MenuModelRegistry } from '../common/menu';
+import { CommandRegistry } from '../common/command';
+import { DisposableCollection } from '../common/disposable';
 
 export interface AuthenticationSession {
     id: string;
@@ -43,6 +47,15 @@ export interface AuthenticationSessionsChangeEvent {
 export interface AuthenticationProviderInformation {
     id: string;
     label: string;
+}
+
+export interface SessionRequest {
+    disposables: Disposable[];
+    requestingExtensionIds: string[];
+}
+
+export interface SessionRequestInfo {
+    [scopes: string]: SessionRequest;
 }
 
 export interface AuthenticationProvider {
@@ -71,6 +84,7 @@ export interface AuthenticationService {
     getProviderIds(): string[];
     registerAuthenticationProvider(id: string, provider: AuthenticationProvider): void;
     unregisterAuthenticationProvider(id: string): void;
+    requestNewSession(id: string, scopes: string[], extensionId: string, extensionName: string): void;
     sessionsUpdate(providerId: string, event: AuthenticationSessionsChangeEvent): void;
 
     readonly onDidRegisterAuthenticationProvider: Event<AuthenticationProviderInformation>;
@@ -88,6 +102,9 @@ export interface AuthenticationService {
 
 @injectable()
 export class AuthenticationServiceImpl implements AuthenticationService {
+    private noAccountsMenuItem: Disposable | undefined;
+    private signInRequestItems = new Map<string, SessionRequestInfo>();
+
     private authenticationProviders: Map<string, AuthenticationProvider> = new Map<string, AuthenticationProvider>();
 
     private onDidRegisterAuthenticationProviderEmitter: Emitter<AuthenticationProviderInformation> = new Emitter<AuthenticationProviderInformation>();
@@ -99,6 +116,53 @@ export class AuthenticationServiceImpl implements AuthenticationService {
     private onDidChangeSessionsEmitter: Emitter<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }> =
         new Emitter<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }>();
     readonly onDidChangeSessions: Event<{ providerId: string, label: string, event: AuthenticationSessionsChangeEvent }> = this.onDidChangeSessionsEmitter.event;
+
+    @inject(MenuModelRegistry) protected readonly menus: MenuModelRegistry;
+    @inject(CommandRegistry) protected readonly commands: CommandRegistry;
+    @inject(StorageService) protected readonly storageService: StorageService;
+
+    @postConstruct()
+    init(): void {
+        const disposableMap = new Map<string, DisposableCollection>();
+        this.onDidChangeSessions(async e => {
+            if (e.event.added.length > 0) {
+                const sessions = await this.getSessions(e.providerId);
+                sessions.forEach(session => {
+                    const disposables = new DisposableCollection();
+                    const commandId = `account-sign-out-${e.providerId}-${session.id}`;
+                    const command = this.commands.registerCommand({ id: commandId }, {
+                        execute: async () => {
+                            this.signOutOfAccount(e.providerId, session.account.label);
+                        }
+                    });
+                    const subSubMenuPath = [...ACCOUNTS_SUBMENU, 'account-sub-menu'];
+                    this.menus.registerSubmenu(subSubMenuPath, `${session.account.label} (${e.label})`);
+                    const menuAction = this.menus.registerMenuAction(subSubMenuPath, {
+                        label: 'Sign Out',
+                        commandId
+                    });
+                    disposables.push(menuAction);
+                    disposables.push(command);
+                    disposableMap.set(session.id, disposables);
+                });
+            }
+            if (e.event.removed.length > 0) {
+                e.event.removed.forEach(removed => {
+                    const toDispose = disposableMap.get(removed);
+                    if (toDispose) {
+                        toDispose.dispose();
+                        disposableMap.delete(removed);
+                    }
+                });
+            }
+        });
+        this.commands.registerCommand({ id: 'noAccounts'}, {
+            execute: async () => {},
+            isEnabled(): boolean {
+                return false;
+            }
+        });
+    }
 
     getProviderIds(): string[] {
         const providerIds: string[] = [];
@@ -112,9 +176,31 @@ export class AuthenticationServiceImpl implements AuthenticationService {
         return this.authenticationProviders.has(id);
     }
 
+    private updateAccountsMenuItem(): void {
+        let hasSession = false;
+        this.authenticationProviders.forEach(async provider => {
+            hasSession = hasSession || provider.hasSessions();
+        });
+
+        if (hasSession && this.noAccountsMenuItem) {
+            this.noAccountsMenuItem.dispose();
+            this.noAccountsMenuItem = undefined;
+        }
+
+        if (!hasSession && !this.noAccountsMenuItem) {
+            this.noAccountsMenuItem = this.menus.registerMenuAction(ACCOUNTS_MENU, {
+                label: 'You are not signed in to any accounts',
+                order: '0',
+                commandId: 'noAccounts'
+            });
+        }
+    }
+
     registerAuthenticationProvider(id: string, authenticationProvider: AuthenticationProvider): void {
         this.authenticationProviders.set(id, authenticationProvider);
         this.onDidRegisterAuthenticationProviderEmitter.fire({ id, label: authenticationProvider.label });
+
+        this.updateAccountsMenuItem();
     }
 
     unregisterAuthenticationProvider(id: string): void {
@@ -122,6 +208,7 @@ export class AuthenticationServiceImpl implements AuthenticationService {
         if (provider) {
             this.authenticationProviders.delete(id);
             this.onDidUnregisterAuthenticationProviderEmitter.fire({ id, label: provider.label });
+            this.updateAccountsMenuItem();
         }
     }
 
@@ -130,6 +217,103 @@ export class AuthenticationServiceImpl implements AuthenticationService {
         if (provider) {
             await provider.updateSessionItems(event);
             this.onDidChangeSessionsEmitter.fire({ providerId: id, label: provider.label, event: event });
+            this.updateAccountsMenuItem();
+
+            if (event.added) {
+                await this.updateNewSessionRequests(provider);
+            }
+        }
+    }
+
+    private async updateNewSessionRequests(provider: AuthenticationProvider): Promise<void> {
+        const existingRequestsForProvider = this.signInRequestItems.get(provider.id);
+        if (!existingRequestsForProvider) {
+            return;
+        }
+
+        const sessions = await provider.getSessions();
+        Object.keys(existingRequestsForProvider).forEach(requestedScopes => {
+            if (sessions.some(session => session.scopes.slice().sort().join('') === requestedScopes)) {
+                const sessionRequest = existingRequestsForProvider[requestedScopes];
+                if (sessionRequest) {
+                    sessionRequest.disposables.forEach(item => item.dispose());
+                }
+
+                delete existingRequestsForProvider[requestedScopes];
+                if (Object.keys(existingRequestsForProvider).length === 0) {
+                    this.signInRequestItems.delete(provider.id);
+                } else {
+                    this.signInRequestItems.set(provider.id, existingRequestsForProvider);
+                }
+            }
+        });
+    }
+
+    async requestNewSession(providerId: string, scopes: string[], extensionId: string, extensionName: string): Promise<void> {
+        let provider = this.authenticationProviders.get(providerId);
+        if (!provider) {
+            // Activate has already been called for the authentication provider, but it cannot block on registering itself
+            // since this is sync and returns a disposable. So, wait for registration event to fire that indicates the
+            // provider is now in the map.
+            await new Promise((resolve, _) => {
+                this.onDidRegisterAuthenticationProvider(e => {
+                    if (e.id === providerId) {
+                        provider = this.authenticationProviders.get(providerId);
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        if (provider) {
+            const providerRequests = this.signInRequestItems.get(providerId);
+            const scopesList = scopes.sort().join('');
+            const extensionHasExistingRequest = providerRequests
+                && providerRequests[scopesList]
+                && providerRequests[scopesList].requestingExtensionIds.indexOf(extensionId) > 0;
+
+            if (extensionHasExistingRequest) {
+                return;
+            }
+
+            const menuItem = this.menus.registerMenuAction(ACCOUNTS_SUBMENU, {
+                label: `Sign in to use ${extensionName} (1)`,
+                order: '1',
+                commandId: `${extensionId}signIn`,
+            });
+
+            const signInCommand = this.commands.registerCommand({ id: `${extensionId}signIn`}, {
+                execute: async () => {
+                    const session = await this.login(providerId, scopes);
+
+                    // Add extension to allow list since user explicitly signed in on behalf of it
+                    const allowList = await readAllowedExtensions(this.storageService, providerId, session.account.label);
+                    if (!allowList.find(allowed => allowed.id === extensionId)) {
+                        allowList.push({ id: extensionId, name: extensionName });
+                        this.storageService.setData(`${providerId}-${session.account.label}`, JSON.stringify(allowList));
+                    }
+
+                    // And also set it as the preferred account for the extension
+                    this.storageService.setData(`${extensionName}-${providerId}`, session.id);
+                }
+            });
+
+            if (providerRequests) {
+                const existingRequest = providerRequests[scopesList] || { disposables: [], requestingExtensionIds: [] };
+
+                providerRequests[scopesList] = {
+                    disposables: [...existingRequest.disposables, menuItem, signInCommand],
+                    requestingExtensionIds: [...existingRequest.requestingExtensionIds, extensionId]
+                };
+                this.signInRequestItems.set(providerId, providerRequests);
+            } else {
+                this.signInRequestItems.set(providerId, {
+                    [scopesList]: {
+                        disposables: [menuItem, signInCommand],
+                        requestingExtensionIds: [extensionId]
+                    }
+                });
+            }
         }
     }
 

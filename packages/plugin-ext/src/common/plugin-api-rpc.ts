@@ -1523,6 +1523,7 @@ export interface AuthenticationMain {
     $getSessionsPrompt(providerId: string, accountName: string, providerName: string, extensionId: string, extensionName: string): Promise<boolean>;
     $loginPrompt(providerName: string, extensionName: string): Promise<boolean>;
     $setTrustedExtensionAndAccountPreference(providerId: string, accountName: string, extensionId: string, extensionName: string, sessionId: string): Promise<void>;
+    $requestNewSession(providerId: string, scopes: string[], extensionId: string, extensionName: string): Promise<void>;
 
     $getSessions(providerId: string): Promise<ReadonlyArray<theia.AuthenticationSession>>;
     $login(providerId: string, scopes: string[]): Promise<theia.AuthenticationSession>;

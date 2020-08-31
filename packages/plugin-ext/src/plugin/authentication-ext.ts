@@ -100,6 +100,9 @@ export class AuthenticationExtImpl implements AuthenticationExt {
                 const session = await provider.login(scopes);
                 await this.proxy.$setTrustedExtensionAndAccountPreference(providerId, session.account.label, extensionId, extensionName, session.id);
                 return session;
+            } else {
+                await this.proxy.$requestNewSession(providerId, scopes, extensionId, extensionName);
+                return undefined;
             }
         }
     }

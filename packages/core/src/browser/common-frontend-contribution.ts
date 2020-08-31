@@ -19,7 +19,7 @@
 import debounce = require('lodash.debounce');
 import { injectable, inject } from 'inversify';
 import { TabBar, Widget, Title } from '@phosphor/widgets';
-import { MAIN_MENU_BAR, SETTINGS_MENU, MenuContribution, MenuModelRegistry } from '../common/menu';
+import { MAIN_MENU_BAR, SETTINGS_MENU, MenuContribution, MenuModelRegistry, ACCOUNTS_MENU } from '../common/menu';
 import { KeybindingContribution, KeybindingRegistry } from './keybinding';
 import { FrontendApplication, FrontendApplicationContribution } from './frontend-application';
 import { CommandContribution, CommandRegistry, Command } from '../common/command';
@@ -361,6 +361,13 @@ export class CommonFrontendContribution implements FrontendApplicationContributi
             title: 'Settings',
             menuPath: SETTINGS_MENU,
             order: 0,
+        });
+        app.shell.leftPanelHandler.addMenu({
+            id: 'accounts-menu',
+            iconClass: 'codicon codicon-person',
+            title: 'Accounts',
+            menuPath: ACCOUNTS_MENU,
+            order: 1,
         });
     }
 
