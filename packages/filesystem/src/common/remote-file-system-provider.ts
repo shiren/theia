@@ -174,6 +174,7 @@ export class RemoteFileSystemProvider implements Required<FileSystemProvider>, D
     // --- forwarding calls
 
     stat(resource: URI): Promise<Stat> {
+        console.error(' ===== RemoteFileSystemProvider === stat ', resource);
         return this.server.stat(resource.toString());
     }
 
@@ -345,6 +346,7 @@ export class FileSystemProviderServer implements RemoteFileSystemServer {
     }
 
     stat(resource: string): Promise<Stat> {
+        console.error('!!!!!!!!!!!!!! FileSystemProviderServer stat ', resource);
         return this.provider.stat(new URI(resource));
     }
 
