@@ -72,6 +72,8 @@ export class FrontendGenerator extends AbstractGenerator {
 ${this.ifBrowser("require('es6-promise/auto');")}
 require('reflect-metadata');
 const { Container } = require('inversify');
+const { FrontendApplicationConfigProvider } = require('@theia/core/lib/browser/frontend-application-config-provider');
+FrontendApplicationConfigProvider.set(${this.prettyStringify(this.pck.props.frontend.config)});
 const { FrontendApplication } = require('@theia/core/lib/browser');
 const { frontendApplicationModule } = require('@theia/core/lib/browser/frontend-application-module');
 const { messagingFrontendModule } = require('@theia/core/lib/${this.pck.isBrowser()
@@ -79,9 +81,6 @@ const { messagingFrontendModule } = require('@theia/core/lib/${this.pck.isBrowse
                 : 'electron-browser/messaging/electron-messaging-frontend-module'}');
 const { loggerFrontendModule } = require('@theia/core/lib/browser/logger-frontend-module');
 const { ThemeService } = require('@theia/core/lib/browser/theming');
-const { FrontendApplicationConfigProvider } = require('@theia/core/lib/browser/frontend-application-config-provider');
-
-FrontendApplicationConfigProvider.set(${this.prettyStringify(this.pck.props.frontend.config)});
 
 const container = new Container();
 container.load(frontendApplicationModule);
@@ -138,6 +137,9 @@ const { ElectronMainApplication, ElectronMainApplicationGlobals } = require('@th
 const { Container } = require('inversify');
 const { resolve } = require('path');
 const { app } = require('electron');
+
+// Fix the window reloading issue, see: https://github.com/electron/electron/issues/22119
+app.allowRendererProcessReuse = false;
 
 const config = ${this.prettyStringify(this.pck.props.frontend.config)};
 const isSingleInstance = ${this.pck.props.backend.config.singleInstance === true ? 'true' : 'false'};
