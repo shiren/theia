@@ -111,31 +111,47 @@ export class NsfwFileSystemWatcherServer implements FileSystemWatcherServer {
             this.debug('Files ignored for watching', options.ignored);
         }
 
-        let watcher: nsfw.NSFW | undefined = await nsfw(fs.realpathSync(basePath), (events: nsfw.ChangeEvent[]) => {
-            for (const event of events) {
-                if (event.action === nsfw.actions.CREATED) {
-                    this.pushAdded(watcherId, this.resolvePath(event.directory, event.file!));
+        let watcher: nsfw.NSFW | undefined;
+        try {
+            watcher = await nsfw(fs.realpathSync(basePath), (events: nsfw.ChangeEvent[]) => {
+                for (const event of events) {
+                    if (event.action === nsfw.actions.CREATED) {
+                        this.pushAdded(watcherId, this.resolvePath(event.directory, event.file!));
+                    }
+                    if (event.action === nsfw.actions.DELETED) {
+                        this.pushDeleted(watcherId, this.resolvePath(event.directory, event.file!));
+                    }
+                    if (event.action === nsfw.actions.MODIFIED) {
+                        this.pushUpdated(watcherId, this.resolvePath(event.directory, event.file!));
+                    }
+                    if (event.action === nsfw.actions.RENAMED) {
+                        this.pushDeleted(watcherId, this.resolvePath(event.directory, event.oldFile!));
+                        this.pushAdded(watcherId, this.resolvePath(event.newDirectory || event.directory, event.newFile!));
+                    }
                 }
-                if (event.action === nsfw.actions.DELETED) {
-                    this.pushDeleted(watcherId, this.resolvePath(event.directory, event.file!));
-                }
-                if (event.action === nsfw.actions.MODIFIED) {
-                    this.pushUpdated(watcherId, this.resolvePath(event.directory, event.file!));
-                }
-                if (event.action === nsfw.actions.RENAMED) {
-                    this.pushDeleted(watcherId, this.resolvePath(event.directory, event.oldFile!));
-                    this.pushAdded(watcherId, this.resolvePath(event.newDirectory || event.directory, event.newFile!));
+            }, {
+                errorCallback: error => {
+                    // see https://github.com/atom/github/issues/342
+                    console.warn(`Failed to watch "${basePath}":`, error);
+                    if (error === 'Inotify limit reached') {
+                        if (this.client) {
+                            this.client.onError();
+                        }
+                    }
+                    this.unwatchFileChanges(watcherId);
+                },
+                ...this.options.nsfwOptions
+            });
+            await watcher.start();
+        } catch (error) {
+            if (error.message === 'NSFW was unable to start watching that directory.') {
+                if (this.client) {
+                    this.client.onError();
                 }
             }
-        }, {
-            errorCallback: error => {
-                // see https://github.com/atom/github/issues/342
-                console.warn(`Failed to watch "${basePath}":`, error);
-                this.unwatchFileChanges(watcherId);
-            },
-            ...this.options.nsfwOptions
-        });
-        await watcher.start();
+            this.unwatchFileChanges(watcherId);
+            throw error;
+        }
         this.options.info('Started watching:', basePath);
         if (toDisposeWatcher.disposed) {
             this.debug('Stopping watching:', basePath);

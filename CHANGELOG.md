@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.6.0
+
+- [core] show Linux users a warning when Inotify handles have been exhausted, with link to instructions on how to fix
+
 ## v1.5.0 - 27/08/2020
 
 - [application-manager] fixed issue regarding reloading electron windows [#8345](https://github.com/eclipse-theia/theia/pull/8345)
