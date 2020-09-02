@@ -355,7 +355,8 @@ export class PluginManagerExtImpl implements PluginManagerExt, PluginManager {
             asAbsolutePath: asAbsolutePath,
             logPath: logPath,
             storagePath: storagePath,
-            globalStoragePath: globalStoragePath
+            globalStoragePath: globalStoragePath,
+            environmentVariableCollection:
         };
         this.pluginContextsMap.set(plugin.model.id, pluginContext);
 
