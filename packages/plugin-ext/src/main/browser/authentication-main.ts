@@ -169,6 +169,8 @@ export class AuthenticationMainImpl implements AuthenticationMain {
             allowList.push({ id: extensionId, name: extensionName });
             this.storageService.setData(`authentication-trusted-extensions-${providerId}-${accountName}`, JSON.stringify(allowList));
         }
+
+        this.storageService.setData(`authentication-session-${extensionName}-${providerId}`, sessionId);
     }
 }
 

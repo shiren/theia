@@ -302,7 +302,7 @@ export class AuthenticationServiceImpl implements AuthenticationService {
                     }
 
                     // And also set it as the preferred account for the extension
-                    this.storageService.setData(`authentication-${extensionName}-${providerId}`, session.id);
+                    this.storageService.setData(`authentication-session-${extensionName}-${providerId}`, session.id);
                 }
             });
 
